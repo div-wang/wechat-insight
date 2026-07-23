@@ -499,6 +499,14 @@ def detect_databases():
 
 
 def main(argv=None):
+    if sys.platform == "win32":
+        import importlib.util
+        module_path = os.path.join(os.path.dirname(__file__), "extract_keys_windows.py")
+        spec = importlib.util.spec_from_file_location("extract_keys_windows", module_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.main(argv)
+
     print("=" * 50)
     print("微信 Mac 4.x 数据库密钥提取工具")
     print("=" * 50)

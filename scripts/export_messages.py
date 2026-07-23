@@ -28,8 +28,8 @@ import zstandard as zstd
 PAGE_SIZE = 4096
 RESERVE = 80
 IV_SIZE = 16
-KEYS_FILE = os.path.expanduser("~/.config/wechat-keys.json")
-CONFIG_FILE = os.path.expanduser("~/.config/wechat-insight.json")
+KEYS_FILE = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "wechat-insight", "wechat-keys.json") if os.name == "nt" else os.path.expanduser("~/.config/wechat-keys.json")
+CONFIG_FILE = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "wechat-insight", "wechat-insight.json") if os.name == "nt" else os.path.expanduser("~/.config/wechat-insight.json")
 TMP_DIR = os.path.expanduser("~/tmp/wechat_insight")
 SELF_SENDER_FALLBACK = 3
 SELF_SENDER_ID = "__self__"
@@ -64,8 +64,8 @@ def load_config(config_path=None):
     return {
         "wxid": None,
         "db_base_path": None,
-        "data_dir": os.path.expanduser("~/.wechat-insight/data"),
-        "report_dir": os.path.expanduser("~/.wechat-insight/reports"),
+        "data_dir": (os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "wechat-insight", "data") if os.name == "nt" else os.path.expanduser("~/.wechat-insight/data")),
+        "report_dir": (os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "wechat-insight", "reports") if os.name == "nt" else os.path.expanduser("~/.wechat-insight/reports")),
     }
 
 

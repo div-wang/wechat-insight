@@ -8,10 +8,32 @@ import os
 import pathlib
 import sys
 
+# Windows PowerShell/cmd may default to a legacy code page (for example GBK),
+# while the reports and status messages contain Unicode symbols and Chinese.
+# Use UTF-8 output so normal CLI operations do not fail on print().
+if sys.platform == "win32":
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+
 
 ROOT = pathlib.Path(__file__).resolve().parent
-DEFAULT_CONFIG_PATH = os.path.expanduser("~/.config/wechat-insight.json")
-DEFAULT_KEYS_PATH = os.path.expanduser("~/.config/wechat-keys.json")
+def _default_state_path(filename):
+    """Return a native per-user state path on every supported platform."""
+    override = os.environ.get(
+        "WECHAT_INSIGHT_CONFIG_PATH" if filename == "wechat-insight.json"
+        else "WECHAT_INSIGHT_KEYS_PATH"
+    )
+    if override:
+        return os.path.abspath(os.path.expandvars(os.path.expanduser(override)))
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        return os.path.join(base, "wechat-insight", filename)
+    return os.path.expanduser(os.path.join("~", ".config", filename))
+
+
+DEFAULT_CONFIG_PATH = _default_state_path("wechat-insight.json")
+DEFAULT_KEYS_PATH = _default_state_path("wechat-keys.json")
 
 
 def load_script_module(name, relative_path):
@@ -118,10 +140,12 @@ def run_doctor(config_path=DEFAULT_CONFIG_PATH, keys_path=DEFAULT_KEYS_PATH):
 
     complete = config_exists and keys_exists and wxid and db_base_path
     if complete:
-        print("状态: 可直接使用 `./wechat-insight list` 或 `./wechat-insight export ...`")
+        launcher = ".\\wechat-insight.cmd" if sys.platform == "win32" else "./wechat-insight"
+        print(f"状态: 可直接使用 `{launcher} list` 或 `{launcher} export ...`")
         return 0
 
-    print("状态: 需要先执行 `./wechat-insight setup`")
+    launcher = ".\\wechat-insight.cmd" if sys.platform == "win32" else "./wechat-insight"
+    print(f"状态: 需要先执行 `{launcher} setup`")
     return 1
 
 
