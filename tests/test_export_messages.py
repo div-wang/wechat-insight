@@ -19,6 +19,44 @@ def load_module():
 
 
 class ExportMessagesTests(unittest.TestCase):
+    def test_deduplicate_records_and_write_date_json(self):
+        module = load_module()
+        records = [
+            {
+                "timestamp": 100,
+                "datetime": "2024-01-02 10:00:00",
+                "chat_id": "wxid_a",
+                "real_sender_id": 9,
+                "msg_type": 1,
+                "content": "hello",
+            },
+            {
+                "timestamp": 100,
+                "datetime": "2024-01-02 10:00:00",
+                "chat_id": "wxid_a",
+                "real_sender_id": 9,
+                "msg_type": 1,
+                "content": "hello",
+            },
+            {
+                "timestamp": 200,
+                "datetime": "2024-01-03 10:00:00",
+                "chat_id": "wxid_a",
+                "real_sender_id": 9,
+                "msg_type": 1,
+                "content": "world",
+            },
+        ]
+
+        unique = module.deduplicate_records(records)
+        self.assertEqual(len(unique), 2)
+
+        with tempfile.TemporaryDirectory() as td:
+            paths = module.write_date_json_files(td, unique)
+            self.assertEqual(len(paths), 2)
+            first = json.loads((pathlib.Path(td) / "messages_by_date" / "messages_20240102.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(first), 1)
+
     def test_detect_self_sender_id_from_group_messages(self):
         module = load_module()
 

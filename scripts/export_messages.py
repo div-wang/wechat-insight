@@ -297,11 +297,60 @@ def resolve_sender_info(uname, display, is_group, real_sender_id, local_type,
 
 # === 消息导出 ===
 
+def message_identity(record):
+    """Return a stable logical identity used to remove shard duplicates."""
+    values = (
+        record.get("chat_id"), record.get("timestamp"),
+        record.get("real_sender_id"), record.get("msg_type"),
+        record.get("content"),
+    )
+    return hashlib.sha256(
+        json.dumps(values, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def deduplicate_records(records):
+    """Deduplicate records while preserving their first-seen order."""
+    unique = []
+    seen = set()
+    for record in records:
+        key = message_identity(record)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(record)
+    return unique
+
+
+def write_json_records(path, records):
+    """Write a UTF-8 JSON array containing message records."""
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(records, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+
+
+def write_date_json_files(output_dir, records):
+    """Write one JSON array per local calendar date and return its paths."""
+    by_date = {}
+    for record in records:
+        date_label = (record.get("datetime") or "")[:10] or "unknown"
+        by_date.setdefault(date_label, []).append(record)
+
+    date_dir = os.path.join(output_dir, "messages_by_date")
+    os.makedirs(date_dir, exist_ok=True)
+    paths = []
+    for date_label in sorted(by_date):
+        path = os.path.join(date_dir, f"messages_{date_label.replace('-', '')}.json")
+        write_json_records(path, by_date[date_label])
+        paths.append(path)
+    return paths
+
+
 def export_messages(db_path, contacts, hash_map, output_path,
                     start_ts=None, end_ts=None,
                     target_chats=None, target_contacts=None,
                     self_sender_id=SELF_SENDER_FALLBACK,
-                    file_mode="w"):
+                    file_mode="w", seen_keys=None):
     """
     导出消息为 JSONL 格式
 
@@ -379,7 +428,6 @@ def export_messages(db_path, contacts, hash_map, output_path,
             chat_stats[display] = {"count": len(rows), "is_group": is_group}
 
             for ct, local_type, real_sender_id, content, source in rows:
-                total_messages += 1
 
                 msg_type_label = MSG_TYPE_LABELS.get(local_type, "other")
                 decoded = decode_content(content)
@@ -401,7 +449,6 @@ def export_messages(db_path, contacts, hash_map, output_path,
 
                 if local_type == 1 and decoded:
                     # Text message
-                    total_text_messages += 1
                     sender_id, sender_name, text, _, _ = resolve_sender_info(
                         uname=uname,
                         display=display,
@@ -445,6 +492,16 @@ def export_messages(db_path, contacts, hash_map, output_path,
                     record["sender_id"] = sender_id
                     record["sender_name"] = sender_name
                     record["content"] = f"[{msg_type_label}]"
+
+                key = message_identity(record)
+                if seen_keys is not None:
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+
+                total_messages += 1
+                if local_type == 1 and decoded:
+                    total_text_messages += 1
 
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
@@ -621,6 +678,7 @@ def main(argv=None):
         "total_text_messages": 0,
         "chat_stats": {},
     }
+    seen_keys = set()
     for idx, db in enumerate(message_dbs):
         mode = "w" if idx == 0 else "a"
         shard_label = os.path.basename(db)
@@ -633,20 +691,49 @@ def main(argv=None):
             target_contacts=target_contacts,
             self_sender_id=self_sender_id,
             file_mode=mode,
+            seen_keys=seen_keys,
         )
-        agg["total_messages"] += stats["total_messages"]
-        agg["total_text_messages"] += stats["total_text_messages"]
+        # Counts are recomputed below from the final deduplicated records.
         # chat_stats 是按 chat_name 聚合的，跨分片同名聊天合并
         for name, info in stats["chat_stats"].items():
             existing = agg["chat_stats"].setdefault(name, {"count": 0, "is_group": info["is_group"]})
             existing["count"] += info["count"]
+    # Read the final JSONL and create standard JSON artifacts.
+    with open(output_path, encoding="utf-8") as f:
+        records = deduplicate_records(json.loads(line) for line in f if line.strip())
+    with open(output_path, "w", encoding="utf-8") as f:
+        for record in records:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    agg["total_messages"] = len(records)
+    agg["total_text_messages"] = sum(
+        1 for record in records if record.get("msg_type_label") == "text"
+    )
+    agg["chat_stats"] = {}
+    for record in records:
+        name = record.get("chat_name", "未知会话")
+        existing = agg["chat_stats"].setdefault(
+            name, {"count": 0, "is_group": bool(record.get("is_group"))}
+        )
+        existing["count"] += 1
     agg["chat_count"] = len(agg["chat_stats"])
     stats = agg
+
+    json_path = os.path.splitext(output_path)[0] + ".json"
+    write_json_records(json_path, records)
+    date_paths = write_date_json_files(output_dir, records)
+    print(f"  JSON: {json_path}")
+    print(
+        f"  按日期 JSON: {len(date_paths)} 个文件，目录 "
+        f"{os.path.join(output_dir, 'messages_by_date')}"
+    )
 
     # Write metadata
     meta = {
         "export_time": datetime.now().isoformat(),
         "output_file": filename,
+        "json_file": os.path.basename(json_path),
+        "date_json_files": [os.path.relpath(path, output_dir) for path in date_paths],
         "shards_processed": [os.path.basename(p) for p in message_dbs],
         "total_messages": stats["total_messages"],
         "total_text_messages": stats["total_text_messages"],
