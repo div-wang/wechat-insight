@@ -26,6 +26,7 @@ _STATE_DIR = os.path.join(
 KEYS_FILE = os.path.abspath(os.environ.get("WECHAT_INSIGHT_KEYS_PATH", os.path.join(_STATE_DIR, "wechat-keys.json")))
 CONFIG_FILE = os.path.abspath(os.environ.get("WECHAT_INSIGHT_CONFIG_PATH", os.path.join(_STATE_DIR, "wechat-insight.json")))
 FRIDA_LOG = os.path.join(os.environ.get("TEMP", os.path.expanduser("~")), "wechat_frida_keys.log")
+CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 
 def find_weixin_exe():
@@ -232,6 +233,7 @@ def capture_keys(timeout=180, restart=True):
         subprocess.run(
             ["powershell", "-NoProfile", "-Command", "Get-Process Weixin -ErrorAction SilentlyContinue | Stop-Process -Force"],
             check=False, capture_output=True,
+            creationflags=CREATE_NO_WINDOW,
         )
         time.sleep(2)
 

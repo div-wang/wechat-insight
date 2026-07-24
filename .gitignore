@@ -12,6 +12,9 @@ htmlcov/
 *.egg-info/
 .venv/
 venv/
+build/
+dist/
+release/
 
 # Editors
 .idea/

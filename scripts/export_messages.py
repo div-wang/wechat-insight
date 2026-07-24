@@ -662,10 +662,10 @@ def main(argv=None):
     os.makedirs(output_dir, exist_ok=True)
 
     # Build filename
-    if start_ts and end_ts:
-        filename = f"messages_{datetime.fromtimestamp(start_ts).strftime('%Y%m%d')}_{datetime.fromtimestamp(end_ts).strftime('%Y%m%d')}.jsonl"
-    elif args.days:
+    if args.days:
         filename = f"messages_last{args.days}d.jsonl"
+    elif start_ts and end_ts:
+        filename = f"messages_{datetime.fromtimestamp(start_ts).strftime('%Y%m%d')}_{datetime.fromtimestamp(end_ts).strftime('%Y%m%d')}.jsonl"
     else:
         filename = f"messages_all.jsonl"
 
